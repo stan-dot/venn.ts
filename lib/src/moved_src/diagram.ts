@@ -3,8 +3,7 @@ import { select, selectAll } from "d3-selection";
 import { intersectionArea, distance, getCenter } from "./circleintersection";
 import { nelderMead } from "fmin";
 import { venn, lossFunction, normalizeSolution, scaleSolution } from "./layout";
-
-/*global console:true*/
+import { Circle } from "./types";
 
 export function VennDiagram() {
   let width = 600,
@@ -15,7 +14,7 @@ export function VennDiagram() {
     normalize = true,
     wrap = true,
     styled = true,
-    fontSize = null,
+    fontSize: number | null = null,
     orientationOrder = null,
     // mimic the behaviour of d3.scale.category10 from the previous
     // version of d3
@@ -36,7 +35,7 @@ export function VennDiagram() {
       "#17becf",
     ],
     colourIndex = 0,
-    colours = function (key) {
+    colours = (key) => {
       if (key in colourMap) {
         return colourMap[key];
       }
@@ -83,7 +82,7 @@ export function VennDiagram() {
     // Figure out the current label for each set. These can change
     // and D3 won't necessarily update (fixes https://github.com/benfred/venn.js/issues/103)
     const labels = {};
-    data.forEach(function (datum) {
+    data.forEach((datum) => {
       if (datum.label) {
         labels[datum.sets] = datum.label;
       }
@@ -120,9 +119,12 @@ export function VennDiagram() {
 
     // interpolate intersection area paths between previous and
     // current paths
-    const pathTween = function (d) {
-      return function (t) {
-        const c = d.sets.map(function (set) {
+    const pathTween = (d) => (t) => {
+      const c = d.sets.map(newFunction_1());
+      return intersectionAreaPath(c);
+
+      function newFunction_1(): any {
+        return (set) => {
           let start = previous[set],
             end = circles[set];
           if (!start) {
@@ -136,9 +138,8 @@ export function VennDiagram() {
             y: start.y * (1 - t) + end.y * t,
             radius: start.radius * (1 - t) + end.radius * t,
           };
-        });
-        return intersectionAreaPath(c);
-      };
+        };
+      }
     };
 
     // update data, joining on the set ids
@@ -205,28 +206,14 @@ export function VennDiagram() {
 
     const updateText = update
       .selectAll("text")
-      .filter(function (d) {
-        return d.sets in textCentres;
-      })
-      .text(function (d) {
-        return label(d);
-      })
-      .attr("x", function (d) {
-        return Math.floor(textCentres[d.sets].x);
-      })
-      .attr("y", function (d) {
-        return Math.floor(textCentres[d.sets].y);
-      });
+      .filter((d) => d.sets in textCentres)
+      .text((d) => label(d))
+      .attr("x", (d) => Math.floor(textCentres[d.sets].x))
+      .attr("y", (d) => Math.floor(textCentres[d.sets].y));
 
     if (wrap) {
       if (hasPrevious) {
-        // d3 4.0 uses 'on' for events on transitions,
-        // but d3 3.0 used 'each' instead. switch appropiately
-        if ("on" in updateText) {
-          updateText.on("end", wrapText(circles, label));
-        } else {
-          updateText.each("end", wrapText(circles, label));
-        }
+        updateText.on("end", wrapText(circles, label));
       } else {
         updateText.each(wrapText(circles, label));
       }
@@ -525,7 +512,7 @@ function getOverlappingCircles(circles) {
   return ret;
 }
 
-export function computeTextCentres(circles, areas) {
+export function computeTextCentres(circles: Circle[], areas) {
   const ret = {},
     overlapped = getOverlappingCircles(circles);
   for (let i = 0; i < areas.length; ++i) {
@@ -592,7 +579,14 @@ export function sortAreas(div, relativeTo) {
   }
 
   // need to sort div's so that Z order is correct
-  div.selectAll("g").sort(function (a, b) {
+  div.selectAll("g").sort(newFunction(relativeTo, shouldExclude));
+}
+
+function newFunction(
+  relativeTo: any,
+  shouldExclude: (sets: any) => boolean
+): any {
+  return (a, b) => {
     // highest order set intersections first
     if (a.sets.length != b.sets.length) {
       return a.sets.length - b.sets.length;
@@ -607,20 +601,20 @@ export function sortAreas(div, relativeTo) {
 
     // finally by size
     return b.size - a.size;
-  });
+  };
 }
 
-export function circlePath(x, y, r) {
+export function circlePath({ x, y, radius }: Circle) {
   const ret = [];
   ret.push("\nM", x, y);
-  ret.push("\nm", -r, 0);
-  ret.push("\na", r, r, 0, 1, 0, r * 2, 0);
-  ret.push("\na", r, r, 0, 1, 0, -r * 2, 0);
+  ret.push("\nm", -radius, 0);
+  ret.push("\na", radius, radius, 0, 1, 0, radius * 2, 0);
+  ret.push("\na", radius, radius, 0, 1, 0, -radius * 2, 0);
   return ret.join(" ");
 }
 
 // inverse of the circlePath function, returns a circle object from an svg path
-export function circleFromPath(path) {
+export function circleFromPath(path: string): Circle {
   const tokens = path.split(" ");
   return {
     x: parseFloat(tokens[1]),
@@ -630,25 +624,22 @@ export function circleFromPath(path) {
 }
 
 /** returns a svg path of the intersection area of a bunch of circles */
-export function intersectionAreaPath(circles) {
+export function intersectionAreaPath(circles: Circle[]) {
   const stats = {};
   intersectionArea(circles, stats);
   const arcs = stats.arcs;
 
-  if (arcs.length === 0) {
-    return "M 0 0";
-  } else if (arcs.length == 1) {
-    const circle = arcs[0].circle;
-    return circlePath(circle.x, circle.y, circle.radius);
-  } else {
-    // draw path around arcs
-    const ret = ["\nM", arcs[0].p2.x, arcs[0].p2.y];
-    for (let i = 0; i < arcs.length; ++i) {
-      const arc = arcs[i],
-        r = arc.circle.radius,
-        wide = arc.width > r;
-      ret.push("\nA", r, r, 0, wide ? 1 : 0, 1, arc.p1.x, arc.p1.y);
-    }
-    return ret.join(" ");
+  if (arcs.length === 0) return "M 0 0";
+
+  if (arcs.length == 1) return circlePath(arcs[0].circle);
+
+  // draw path around arcs
+  const ret = ["\nM", arcs[0].p2.x, arcs[0].p2.y];
+  for (let i = 0; i < arcs.length; ++i) {
+    const arc = arcs[i],
+      r = arc.circle.radius,
+      wide = arc.width > r;
+    ret.push("\nA", r, r, 0, wide ? 1 : 0, 1, arc.p1.x, arc.p1.y);
   }
+  return ret.join(" ");
 }
