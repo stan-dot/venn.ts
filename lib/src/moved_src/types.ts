@@ -8,6 +8,7 @@ export type Circle = {
   x: number;
   y: number;
   radius: number;
+  setid?:string
 };
 
 export type Stats = {
@@ -25,4 +26,6 @@ export type Arc = {
   p1: Point2d;
   p2: Point2d;
 };
+
+export type Area = { weight: number; size: number; };
 

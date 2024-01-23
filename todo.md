@@ -3,5 +3,6 @@
 - [ ] separate out the math logic
 - [ ] use with the strings for packages
 - [ ] move away from ret syntax
+- [ ] set oritentation order based on the example
 
 

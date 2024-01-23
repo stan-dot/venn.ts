@@ -34,18 +34,25 @@ interface SimplexPoint2d {
   fx: number; // The function value at this point
   id: number; // An identifier for the point
   // The coordinates of the point, represented as an array of numbers
-  coordinates: number[]
+  coordinates: {
+    x:number, y: number
+  };
   // [index: number]: number | undefined; // Using an index signature for numeric properties
 }
 
 type Simplex2d = SimplexPoint2d[];
+
+export type Solution = {
+  value_at_peak: number;
+  index_at_peak: SimplexPoint2d;
+};
 
 /** minimizes a function using the downhill simplex method */
 export function nelderMead2d(
   f: SomeFunction,
   initialGuess: Simplex2d,
   parameters: NelderMead2dParameters
-): { value_at_peak: any; index_at_peak: any } {
+): Solution {
   const {
     nonZeroDelta,
     zeroDelta,
@@ -75,7 +82,7 @@ export function nelderMead2d(
     simplex[i + 1].id = i + 1;
   }
 
-  function updateSimplex(value:SimplexPoint2d) {
+  function updateSimplex(value: SimplexPoint2d) {
     for (let i = 0; i < value.length; i++) {
       simplex[N][i] = value[i];
     }

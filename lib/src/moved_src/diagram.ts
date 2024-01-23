@@ -1,8 +1,8 @@
 import { select, selectAll } from "d3-selection";
 
 import { intersectionArea, distance, getCenter } from "./circleintersection";
-import { Circle, Point2d, Stats } from "./types";
-import { nelderMead2d } from "./nelderMead";
+import { Area, Circle, Point2d, Stats } from "./types";
+import { Solution, nelderMead2d } from "./nelderMead";
 
 // sometimes text doesn't fit inside the circle, if thats the case lets wrap
 // the text here such that it fits
@@ -54,9 +54,7 @@ export function wrapText(circles: Circle[], labeller) {
       .selectAll("tspan")
       .attr("x", x)
       .attr("y", y)
-      .attr("dy", function (d, i) {
-        return initial + i * lineHeight + "em";
-      });
+      .attr("dy", (d, i) => initial + i * lineHeight + "em");
   };
 }
 
@@ -64,6 +62,7 @@ function circleMargin(current, interior, exterior) {
   let margin = interior[0].radius - distance(interior[0], current);
   let i;
   let m;
+  // todo change into math.max
   for (i = 1; i < interior.length; ++i) {
     m = interior[i].radius - distance(interior[i], current);
     if (m <= margin) {
@@ -71,6 +70,7 @@ function circleMargin(current, interior, exterior) {
     }
   }
 
+  // todo change into math.min
   for (i = 0; i < exterior.length; ++i) {
     m = distance(exterior[i], current) - exterior[i].radius;
     if (m <= margin) {
@@ -86,9 +86,8 @@ function circleMargin(current, interior, exterior) {
 export function computeTextCentre(interior, exterior) {
   // get an initial estimate by sampling around the interior circles
   // and taking the point with the biggest margin
-  let points = [],
-    i;
-  for (i = 0; i < interior.length; ++i) {
+  let points = [];
+  for (let i = 0; i < interior.length; ++i) {
     const c = interior[i];
     points.push({ x: c.x, y: c.y });
     points.push({ x: c.x + c.radius / 2, y: c.y });
@@ -99,7 +98,7 @@ export function computeTextCentre(interior, exterior) {
   let initial = points[0];
   let margin = circleMargin(points[0], interior, exterior);
 
-  for (i = 1; i < points.length; ++i) {
+  for (let i = 1; i < points.length; ++i) {
     const m = circleMargin(points[i], interior, exterior);
     if (m >= margin) {
       initial = points[i];
@@ -108,13 +107,13 @@ export function computeTextCentre(interior, exterior) {
   }
 
   // maximize the margin numerically
-  const solution = nelderMead2d(
+  const solution: Solution = nelderMead2d(
     (p) => -1 * circleMargin({ x: p[0], y: p[1] }, interior, exterior),
     [initial.x, initial.y],
     { maxIterations: 500, minErrorDelta: 1e-10 }
-  ).x;
+  );
 
-  let ret: Point2d = { x: solution[0], y: solution[1] };
+  let ret: Point2d = solution.index_at_peak.coordinates;
 
   // check solution, fallback as needed (happens if fully overlapped
   // etc)
@@ -184,13 +183,14 @@ function getOverlappingCircles(
   return ret;
 }
 
-export function computeTextCentres(circles, areas) {
+export function computeTextCentres(circles, areas:Area[]) {
   const ret = {};
   const overlapped = getOverlappingCircles(circles);
-  for (let i = 0; i < areas.length; ++i) {
-    const area = areas[i].sets,
-      areaids = {},
-      exclude = {};
+  areas.foreach(areaonbject=>{
+
+    const area = areaonbject.sets;
+    const areaids = {};
+    const exclude = {};
     for (let j = 0; j < area.length; ++j) {
       areaids[area[j]] = true;
       const overlaps = overlapped[area[j]];
@@ -216,7 +216,7 @@ export function computeTextCentres(circles, areas) {
     if (centre.disjoint && areas[i].size > 0) {
       console.log("WARNING: area " + area + " not represented on screen");
     }
-  }
+  })
   return ret;
 }
 
@@ -242,7 +242,7 @@ export function sortAreas(div, relativeTo) {
 
   // checks that all sets are in exclude;
   function shouldExclude(sets) {
-    return sets.all(s=> s in exclude)
+    return sets.all((s) => s in exclude);
   }
 
   // need to sort div's so that Z order is correct
