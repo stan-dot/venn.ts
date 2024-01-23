@@ -1,5 +1,6 @@
 import {nelderMead, bisect, conjugateGradient, zeros, zerosM, norm2, scale} from 'fmin';
 import {intersectionArea, circleOverlap, circleCircleIntersection, distance} from './circleintersection';
+import { shallowCopy } from './blas1';
 
 /** given a list of set objects, and their corresponding overlaps.
 updates the (x, y, radius) attribute on each set such that their positions
@@ -17,7 +18,7 @@ export function venn(areas, parameters) {
     const circles = initialLayout(areas, parameters);
 
     // transform x/y coordinates to a vector to optimize
-    let initial = [], setids = [], setid;
+    let initial = [], const setids = [];const setid;
     for (setid in circles) {
         if (circles.hasOwnProperty(setid)) {
             initial.push(circles[setid].x);
@@ -60,7 +61,7 @@ const SMALL = 1e-10;
 
 /** Returns the distance necessary for two circles of radius r1 + r2 to
 have the overlap area 'overlap' */
-export function distanceFromIntersectArea(r1, r2, overlap) {
+export function distanceFromIntersectArea(r1:number, r2:number, overlap) {
     // handle complete overlapped circles
     if (Math.min(r1, r2) * Math.min(r1,r2) * Math.PI <= overlap + SMALL) {
         return Math.abs(r1 - r2);
@@ -74,7 +75,7 @@ export function distanceFromIntersectArea(r1, r2, overlap) {
  which isn't what people expect. To reflect that we want disjoint sets
  here, set the overlap to 0 for all missing pairwise set intersections */
 function addMissingAreas(areas) {
-    areas = areas.slice();
+    areas = shallowCopy(areas);
 
     // two circle intersections that aren't defined
     let ids = [], pairs = {}, i, j, a, b;
@@ -89,15 +90,18 @@ function addMissingAreas(areas) {
             pairs[[b, a]] = true;
         }
     }
-    ids.sort(function(a, b) { return a > b; });
+    ids.sort((a, b) => a > b);
 
     for (i = 0; i < ids.length; ++i) {
         a = ids[i];
         for (j = i + 1; j < ids.length; ++j) {
             b = ids[j];
             if (!([a, b] in pairs)) {
-                areas.push({'sets': [a, b],
-                            'size': 0});
+                const a = {
+                    'sets': [a, b],
+                    'size': 0
+                };
+                areas.push(a);
             }
         }
     }
@@ -108,34 +112,34 @@ function addMissingAreas(areas) {
 /// and the other indicating if there are subset or disjoint set relationships
 export function getDistanceMatrices(areas, sets, setids) {
     // initialize an empty distance matrix between all the points
-    const distances = zerosM(sets.length, sets.length),
-        constraints = zerosM(sets.length, sets.length);
+    const distances = zerosM(sets.length, sets.length);
+const        constraints = zerosM(sets.length, sets.length);
 
     // compute required distances between all the sets such that
     // the areas match
-    areas.filter(function(x) { return x.sets.length == 2; })
-        .map(function(current) {
-        const left = setids[current.sets[0]],
-            right = setids[current.sets[1]],
-            r1 = Math.sqrt(sets[left].size / Math.PI),
-            r2 = Math.sqrt(sets[right].size / Math.PI),
-            distance = distanceFromIntersectArea(r1, r2, current.size);
+    areas.filter((x) => x.sets.length == 2)
+        .foreach((current) => {
+            const left = setids[current.sets[0]]; const right = setids[current.sets[1]]; 
+            const  r1 = Math.sqrt(sets[left].size / Math.PI); 
+            const r2 = Math.sqrt(sets[right].size / Math.PI);
+            const distance = distanceFromIntersectArea(r1, r2, current.size);
 
-        distances[left][right] = distances[right][left] = distance;
+            distances[left][right] = distances[right][left] = distance;
 
-        // also update constraints to indicate if its a subset or disjoint
-        // relationship
-        let c = 0;
-        if (current.size + 1e-10 >= Math.min(sets[left].size,
-                                             sets[right].size)) {
-            c = 1;
-        } else if (current.size <= 1e-10) {
-            c = -1;
-        }
-        constraints[left][right] = constraints[right][left] = c;
-    });
+            // also update constraints to indicate if its a subset or disjoint
+            // relationship
+            let c = 0;
+            const cond = current.size + 1e-10 >= Math.min(sets[left].size, sets[right].size);
 
-    return {distances: distances, constraints: constraints};
+            if (cond) {
+                c = 1;
+            } else if (current.size <= 1e-10) {
+                c = -1;
+            }
+            constraints[left][right] = constraints[right][left] = c;
+        });
+
+    return {distances, constraints};
 }
 
 /// computes the gradient and loss simulatenously for our constrained MDS optimizer
@@ -152,9 +156,9 @@ function constrainedMDSGradient(x, fxprime, distances, constraints) {
                 dij = distances[i][j],
                 constraint = constraints[i][j];
 
-            const squaredDistance = (xj - xi) * (xj - xi) + (yj - yi) * (yj - yi),
-                distance = Math.sqrt(squaredDistance),
-                delta = squaredDistance - dij * dij;
+            const squaredDistance = (xj - xi) * (xj - xi) + (yj - yi) * (yj - yi);
+                const distance = Math.sqrt(squaredDistance);
+                const delta = squaredDistance - dij * dij;
 
             if (((constraint > 0) && (distance <= dij)) ||
                 ((constraint < 0) && (distance >= dij))) {
@@ -394,7 +398,7 @@ export function lossFunction(sets, overlaps) {
     let output = 0;
 
     function getCircles(indices) {
-        return indices.map(function(i) { return sets[i]; });
+        return indices.map((i) => sets[i]);
     }
 
     for (let i = 0; i < overlaps.length; ++i) {
@@ -402,12 +406,13 @@ export function lossFunction(sets, overlaps) {
         if (area.sets.length == 1) {
             continue;
         } else if (area.sets.length == 2) {
-            const left = sets[area.sets[0]],
-                right = sets[area.sets[1]];
+            const left = sets[area.sets[0]];
+                const right = sets[area.sets[1]];
             overlap = circleOverlap(left.radius, right.radius,
                                     distance(left, right));
         } else {
-            overlap = intersectionArea(getCircles(area.sets));
+            const cs = area.sets.map((i) => sets[i]);
+            overlap = intersectionArea(cs);
         }
 
         const weight = area.hasOwnProperty('weight') ? area.weight : 1.0;

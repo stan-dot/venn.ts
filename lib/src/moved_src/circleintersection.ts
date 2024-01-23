@@ -1,23 +1,22 @@
+import { SMALL } from "./consts";
+import { Stats, Arc } from "./types";
 import { Circle } from "./types";
-import { Point } from "./types";
-
-const SMALL = 1e-10;
+import { Point2d } from "./types";
 
 /** Returns the intersection area of a bunch of circles (where each circle
  is an object having an x,y and radius property) */
-export function intersectionArea(circles: Circle[], stats) {
+export function intersectionArea(circles: Circle[], stats: Stats | null) {
   // get all the intersection points of the circles
   const intersectionPoints = getIntersectionPoints(circles);
 
   // filter out points that aren't included in all the circles
-  const innerPoints = intersectionPoints.filter(function (p) {
-    return containedInCircles(p, circles);
-  });
+  const innerPoints = intersectionPoints.filter((p) =>
+    containedInCircles(p, circles)
+  );
 
-  let arcArea = 0,
-    polygonArea = 0,
-    arcs = [],
-    i;
+  let arcArea = 0;
+  let polygonArea = 0;
+  const arcs = [];
 
   // if we have intersection points that are within all the circles,
   // then figure out the area contained by them
@@ -25,34 +24,39 @@ export function intersectionArea(circles: Circle[], stats) {
     // sort the points by angle from the center of the polygon, which lets
     // us just iterate over points to get the edges
     const center = getCenter(innerPoints);
-    for (i = 0; i < innerPoints.length; ++i) {
-      const p = innerPoints[i];
-      p.angle = Math.atan2(p.x - center.x, p.y - center.y);
-    }
-    innerPoints.sort(function (a, b) {
-      return b.angle - a.angle;
-    });
+    const sortedPoints = innerPoints
+      .map((p) => {
+        return { p: p, angle: Math.atan2(p.x - center.x, p.y - center.y) };
+      })
+      .sort((a, b) => b.angle - a.angle)
+      .map((x) => x.p);
+    // for (i = 0; i < innerPoints.length; ++i) {
+    //   const p = innerPoints[i];
+    //   p.angle = Math.atan2(p.x - center.x, p.y - center.y);
+    // }
+    // innerPoints.sort((a, b) => b.angle - a.angle);
 
     // iterate over all points, get arc between the points
     // and update the areas
-    let p2 = innerPoints[innerPoints.length - 1];
-    for (i = 0; i < innerPoints.length; ++i) {
-      const p1 = innerPoints[i];
+    let p2 = sortedPoints.at(-1)!;
+    if (!p2) throw Error("p2 should be defined");
 
+    sortedPoints.forEach((p1) => {
       // polygon area updates easily ...
-      polygonArea += (p2.x + p1.x) * (p1.y - p2.y);
+      polygonArea += getSubPolygonArea(p2, p1);
 
       // updating the arc area is a little more involved
-      let midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
-        arc = null;
+      const midPoint = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+      const arc = null;
 
+      // todo move to use reduce
       for (let j = 0; j < p1.parentIndex.length; ++j) {
         if (p2.parentIndex.indexOf(p1.parentIndex[j]) > -1) {
           // figure out the angle halfway between the two points
           // on the current circle
-          const circle = circles[p1.parentIndex[j]],
-            a1 = Math.atan2(p1.x - circle.x, p1.y - circle.y),
-            a2 = Math.atan2(p2.x - circle.x, p2.y - circle.y);
+          const circle = circles[p1.parentIndex[j]];
+          const a1 = Math.atan2(p1.x - circle.x, p1.y - circle.y);
+          const a2 = Math.atan2(p2.x - circle.x, p2.y - circle.y);
 
           let angleDiff = a2 - a1;
           if (angleDiff < 0) {
@@ -61,17 +65,16 @@ export function intersectionArea(circles: Circle[], stats) {
 
           // and use that angle to figure out the width of the
           // arc
-          let a = a2 - angleDiff / 2,
-            width = distance(midPoint, {
-              x: circle.x + circle.radius * Math.sin(a),
-              y: circle.y + circle.radius * Math.cos(a),
-            });
+          const a = a2 - angleDiff / 2;
+
+          let width = distance(midPoint, {
+            x: circle.x + circle.radius * Math.sin(a),
+            y: circle.y + circle.radius * Math.cos(a),
+          });
 
           // clamp the width to the largest is can actually be
           // (sometimes slightly overflows because of FP errors)
-          if (width > circle.radius * 2) {
-            width = circle.radius * 2;
-          }
+          width = Math.min(width, circle.radius * 2);
 
           // pick the circle whose arc has the smallest width
           if (arc === null || arc.width > width) {
@@ -85,40 +88,32 @@ export function intersectionArea(circles: Circle[], stats) {
         arcArea += circleArea(arc.circle.radius, arc.width);
         p2 = p1;
       }
-    }
+    });
   } else {
     // no intersection points, is either disjoint - or is completely
     // overlapped. figure out which by examining the smallest circle
-    let smallest = circles[0];
-    for (i = 1; i < circles.length; ++i) {
-      if (circles[i].radius < smallest.radius) {
-        smallest = circles[i];
-      }
-    }
+    const smt = circles.reduce((prev, curr) =>
+      prev.radius < curr.radius ? prev : curr
+    );
 
     // make sure the smallest circle is completely contained in all
     // the other circles
-    let disjoint = false;
-    for (i = 0; i < circles.length; ++i) {
-      if (
-        distance(circles[i], smallest) >
-        Math.abs(smallest.radius - circles[i].radius)
-      ) {
-        disjoint = true;
-        break;
-      }
-    }
-
-    if (disjoint) {
+    // o
+    const smallestIsContained: boolean = circles.every(
+      (c) => distance(c, smt) > Math.abs(smt.radius - c.radius)
+    );
+    if (!smallestIsContained) {
       arcArea = polygonArea = 0;
     } else {
-      arcArea = smallest.radius * smallest.radius * Math.PI;
-      arcs.push({
-        circle: smallest,
-        p1: { x: smallest.x, y: smallest.y + smallest.radius },
-        p2: { x: smallest.x - SMALL, y: smallest.y + smallest.radius },
-        width: smallest.radius * 2,
-      });
+      const r = smt.radius;
+      arcArea = r * r * Math.PI;
+      const newArc: Arc = {
+        circle: smt,
+        p1: { x: smt.x, y: smt.y + r },
+        p2: { x: smt.x - SMALL, y: smt.y + r },
+        width: smt.radius * 2,
+      };
+      arcs.push(newArc);
     }
   }
 
@@ -135,20 +130,19 @@ export function intersectionArea(circles: Circle[], stats) {
   return arcArea + polygonArea;
 }
 
+function getSubPolygonArea(p2: Point2d, p1: Point2d) {
+  return (p2.x + p1.x) * (p1.y - p2.y);
+}
+
 /** returns whether a point is contained by all of a list of circles */
-// todo move to *some* method on the array object
-export function containedInCircles(point: Point, circles: Circle[]) {
-  for (let i = 0; i < circles.length; ++i) {
-    if (distance(point, circles[i]) > circles[i].radius + SMALL) {
-      return false;
-    }
-  }
-  return true;
+function containedInCircles(point: Point2d, circles: Circle[]) {
+  const isContained = (c: Circle) => distance(point, c) <= c.radius + SMALL;
+  return circles.every(isContained);
 }
 
 /** Gets all intersection points between a bunch of circles */
 // todo solve the parentIndex error
-function getIntersectionPoints(circles: Circle[]): Point[] {
+function getIntersectionPoints(circles: Circle[]): Point2d[] {
   const ret = [];
   for (let i = 0; i < circles.length; ++i) {
     for (let j = i + 1; j < circles.length; ++j) {
@@ -164,7 +158,7 @@ function getIntersectionPoints(circles: Circle[]): Point[] {
 }
 
 /** Circular segment area calculation. See http://mathworld.wolfram.com/CircularSegment.html */
-export function circleArea(r: number, width: number): number {
+function circleArea(r: number, width: number): number {
   return (
     r * r * Math.acos(1 - width / r) -
     (r - width) * Math.sqrt(width * (2 * r - width))
@@ -172,7 +166,7 @@ export function circleArea(r: number, width: number): number {
 }
 
 /** euclidean distance between two points */
-export function distance(p1: Point, p2: Point): number {
+export function distance(p1: Point2d, p2: Point2d): number {
   return Math.sqrt(
     (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y)
   );
@@ -187,11 +181,12 @@ export function circleOverlap(r1: number, r2: number, d: number): number {
 
   // completely overlapped
   if (d <= Math.abs(r1 - r2)) {
-    return Math.PI * Math.min(r1, r2) * Math.min(r1, r2);
+    const r = Math.min(r1, r2);
+    return Math.PI * r * r;
   }
 
-  const w1 = r1 - (d * d - r2 * r2 + r1 * r1) / (2 * d),
-    w2 = r2 - (d * d - r1 * r1 + r2 * r2) / (2 * d);
+  const w1 = r1 - (d * d - r2 * r2 + r1 * r1) / (2 * d);
+  const w2 = r2 - (d * d - r1 * r1 + r2 * r2) / (2 * d);
   return circleArea(r1, w1) + circleArea(r2, w2);
 }
 
@@ -199,7 +194,7 @@ export function circleOverlap(r1: number, r2: number, d: number): number {
 returns the intersecting points if possible.
 note: doesn't handle cases where there are infinitely many
 intersection points (circles are equivalent):, or only one intersection point*/
-export function circleCircleIntersection(p1: Circle, p2: Circle): Point[] {
+export function circleCircleIntersection(p1: Circle, p2: Circle): Point2d[] {
   const d = distance(p1, p2),
     r1 = p1.radius,
     r2 = p2.radius;
@@ -224,8 +219,8 @@ export function circleCircleIntersection(p1: Circle, p2: Circle): Point[] {
 }
 
 /** Returns the center of a bunch of points */
-export function getCenter(points: Point[]) {
-  const center: Point = { x: 0, y: 0 };
+export function getCenter(points: Point2d[]) {
+  const center: Point2d = { x: 0, y: 0 };
   points.forEach((p) => {
     center.x += p.x;
     center.y += p.y;
