@@ -1,13 +1,24 @@
 import { shallowCopy, scale, weightedSum, dot, norm2 } from "./blas1";
+import { Point2d } from "./types";
 
 type BisectParams = {
   maxiterations: number;
   tolerance: number;
 };
+
+// const pointDelta = (a:Point2d, b:Point2d)=>{
+//   return 
+// }
+
 /** finds the zeros of a function, given two starting points (which must
  * have opposite signs */
 
-export function bisect(f, a, b, parameters: BisectParams) {
+export function bisect2d(
+  f: (point: Point2d) => number,
+  a: Point2d,
+  b: Point2d,
+  parameters: BisectParams
+) {
   // params
   parameters = parameters || {};
   const maxiterations = parameters.maxiterations || 100;
@@ -41,7 +52,7 @@ export function bisect(f, a, b, parameters: BisectParams) {
 }
 
 type ConjugateGradientPoint = {
-  x: number[];
+  arguments: number[];
   fx: number;
   fxprime: number[];
 
@@ -50,13 +61,13 @@ type ConjugateGradientPoint = {
 
 export function conjugateGradient(f, initial, maxIterations?: number) {
   let current: ConjugateGradientPoint = {
-    x: shallowCopy(initial),
+    arguments: shallowCopy(initial),
     fx: 0,
     fxprime: shallowCopy(initial),
   };
 
   let next: ConjugateGradientPoint = {
-    x: shallowCopy(initial),
+    arguments: shallowCopy(initial),
     fx: 0,
     fxprime: shallowCopy(initial),
   };
@@ -64,7 +75,7 @@ export function conjugateGradient(f, initial, maxIterations?: number) {
   const yk = shallowCopy(initial);
 
   let temp: ConjugateGradientPoint = {
-    x: [],
+    arguments: [],
     fx: 0,
     fxprime: [],
   };
@@ -73,7 +84,7 @@ export function conjugateGradient(f, initial, maxIterations?: number) {
 
   const maxIter = maxIterations ?? initial.length * 20;
 
-  current.fx = f(current.x, current.fxprime);
+  current.fx = f(current.arguments, current.fxprime);
   const pk = shallowCopy(current.fxprime);
   scale(pk, current.fxprime, -1);
 
@@ -104,7 +115,7 @@ export function conjugateGradient(f, initial, maxIterations?: number) {
     }
 
     return {
-      x: shallowCopy(current.x),
+      x: shallowCopy(current.arguments),
       fx: current.fx,
       fxprime: shallowCopy(current.fxprime),
       alpha: a,
@@ -122,7 +133,7 @@ export function conjugateGradient(f, initial, maxIterations?: number) {
 /// next: output: contains next gradient/loss
 /// returns a: step size taken
 function wolfeLineSearch(
-  f:(a:number[][])=> number,
+  f: (a: number[][]) => number,
   pk,
   current: ConjugateGradientPoint,
   next: ConjugateGradientPoint,
@@ -142,8 +153,8 @@ function wolfeLineSearch(
   function zoom(a_lo: number, a_high: number, phi_lo: number) {
     for (let iteration = 0; iteration < 16; ++iteration) {
       optimal_step_size = (a_lo + a_high) / 2;
-      weightedSum(next.x, 1, current.x, optimal_step_size, pk);
-      phi = next.fx = f(next.x, next.fxprime);
+      weightedSum(next.arguments, 1, current.arguments, optimal_step_size, pk);
+      phi = next.fx = f(next.arguments, next.fxprime);
       phiPrime = dot(next.fxprime, pk);
 
       if (phi > phi0 + c1 * optimal_step_size * phiPrime0 || phi >= phi_lo) {
@@ -167,8 +178,8 @@ function wolfeLineSearch(
 
   // outer search loop
   for (let iteration = 0; iteration < 10; ++iteration) {
-    weightedSum(next.x, 1, current.x, optimal_step_size, pk);
-    phi = next.fx = f(next.x, next.fxprime);
+    weightedSum(next.arguments, 1, current.arguments, optimal_step_size, pk);
+    phi = next.fx = f(next.arguments, next.fxprime);
     phiPrime = dot(next.fxprime, pk);
     if (
       phi > phi0 + c1 * optimal_step_size * phiPrime0 ||

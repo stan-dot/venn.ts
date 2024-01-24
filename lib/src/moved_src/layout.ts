@@ -2,7 +2,7 @@ import {intersectionArea, circleOverlap, circleCircleIntersection, distance} fro
 import { norm2, scale, shallowCopy, zeros, zerosM } from './blas1';
 import { Circle } from './types';
 import { Solution, nelderMead2d } from './nelderMead';
-import { bisect, conjugateGradient } from './bigRewrites';
+import { bisect2d, conjugateGradient } from './bigRewrites';
 
 /** given a list of set objects, and their corresponding overlaps.
 updates the (x, y, radius) attribute on each set such that their positions
@@ -69,7 +69,7 @@ export function distanceFromIntersectArea(r1:number, r2:number, overlap) {
         return Math.abs(r1 - r2);
     }
 
-    return bisect((distance) => circleOverlap(r1, r2, distance) - overlap, 0, r1 + r2);
+    return bisect2d((distance) => circleOverlap(r1, r2, distance) - overlap, 0, r1 + r2);
 }
 
 /** Missing pair-wise intersection area data can cause problems:
@@ -239,7 +239,7 @@ export function constrainedMDSLayout(areas, params) {
             best = current;
         }
     }
-    const positions = best.x;
+    const positions = best.arguments;
 
     // translate rows back to (x,y,radius) coordinates
     const circles = {};
